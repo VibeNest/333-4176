@@ -1,13 +1,11 @@
 x-default-build-args: &default-build-args
   TZ: "${TZ}"
-
 x-default-logging: &default-logging
   driver: local
   options:
     max-size: "1G"
     max-file: "1"
     compress: "false"
-
 services:
   bot:
     container_name: tg-ytdlp-bot
@@ -15,113 +13,176 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        <<: *default-build-args
-    env_file:
-      - .env
+        TZ: "${TZ}"
     restart: unless-stopped
-    logging: *default-logging
+    logging:
+      driver: local
+      options:
+        max-size: "1G"
+        max-file: "1"
+        compress: "false"
     depends_on:
       bgutil-provider:
         condition: service_started
       warp:
         condition: service_healthy
     volumes:
-      - .:/app
+    - .:/app
     working_dir: /app
     network_mode: "service:warp"
-
+    environment:
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME}
+      TZ: ${TZ}
+    deploy:
+      resources:
+        limits:
+          memory: '53687091'
+          cpus: 0.1
+        reservations: {}
+    mem_limit: 53687091
+    memswap_limit: 53687091
+    cpus: 0.1
   dashboard:
     container_name: tg-ytdlp-dashboard
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        <<: *default-build-args
-    env_file:
-      - .env
+        TZ: "${TZ}"
     restart: unless-stopped
-    logging: *default-logging
+    logging:
+      driver: local
+      options:
+        max-size: "1G"
+        max-file: "1"
+        compress: "false"
     depends_on:
-      - bot
+    - bot
     volumes:
-      - .:/app
-      - /var/run/docker.sock:/var/run/docker.sock
+    - .:/app
+    - /var/run/docker.sock:/var/run/docker.sock
     working_dir: /app
-    command: ["python", "-m", "uvicorn", "web.dashboard_app:app", "--host", "0.0.0.0", "--port", "5555"]
-    ports:
-      - "5555:5555"
+    command:
+    - "python"
+    - "-m"
+    - "uvicorn"
+    - "web.dashboard_app:app"
+    - "--host"
+    - "0.0.0.0"
+    - "--port"
+    - "5555"
     environment:
-      - BOT_CONTAINER_NAME=tg-ytdlp-bot
-      - WARP_CONTAINER_NAME=tg-ytdlp-warp
-
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME}
+      TZ: ${TZ}
+    expose:
+    - "5555"
+    deploy:
+      resources:
+        limits:
+          memory: '53687091'
+          cpus: 0.1
+        reservations: {}
+    mem_limit: 53687091
+    memswap_limit: 53687091
+    cpus: 0.1
   bgutil-provider:
     image: brainicism/bgutil-ytdlp-pot-provider:latest
     container_name: tg-ytdlp-bgutil-provider
     restart: unless-stopped
-    logging: *default-logging
+    logging:
+      driver: local
+      options:
+        max-size: "1G"
+        max-file: "1"
+        compress: "false"
     network_mode: "container:tg-ytdlp-warp"
-    ports: []
     expose: []
     depends_on:
       warp:
         condition: service_healthy
-
-  # Cookie/config webserver (Caddy). Serves docker/configuration-webserver/site/ over HTTP
-  # for COOKIE_URL / *_COOKIE_URL. It shares warp's network namespace (like
-  # bgutil-provider), because warp overrides the bot's DNS (to 1.1.1.1) and
-  # service-name resolution over warp-net does not work; in the shared namespace
-  # the bot reaches Caddy (:80) at http://localhost/cookies/<file>.
-  # Opt-in: NOT started by `docker compose up -d`.
-  # Run it with:  docker compose --profile configuration-webserver up -d
+    deploy:
+      resources:
+        limits:
+          memory: '53687091'
+          cpus: 0.1
+        reservations: {}
+    mem_limit: 53687091
+    memswap_limit: 53687091
+    cpus: 0.1
   configuration-webserver:
-    profiles: ["configuration-webserver"]
+    profiles:
+    - "configuration-webserver"
     container_name: tg-ytdlp-configuration-webserver
     image: caddy:2-alpine
     restart: unless-stopped
-    logging: *default-logging
+    logging:
+      driver: local
+      options:
+        max-size: "1G"
+        max-file: "1"
+        compress: "false"
     network_mode: "container:tg-ytdlp-warp"
     depends_on:
       warp:
         condition: service_healthy
     volumes:
-      - ./docker/configuration-webserver/conf:/etc/caddy:ro
-      - ./docker/configuration-webserver/site:/srv:ro
-      - caddy-data:/data
-      - caddy-config:/config
-
+    - ./docker/configuration-webserver/conf:/etc/caddy:ro
+    - ./docker/configuration-webserver/site:/srv:ro
+    - caddy-data:/data
+    - caddy-config:/config
+    deploy:
+      resources:
+        limits:
+          memory: '53687091'
+          cpus: 0.1
+        reservations: {}
+    mem_limit: 53687091
+    memswap_limit: 53687091
+    cpus: 0.1
   warp:
     build: ./warp
     container_name: tg-ytdlp-warp
     restart: unless-stopped
-    logging: *default-logging
+    logging:
+      driver: local
+      options:
+        max-size: "1G"
+        max-file: "1"
+        compress: "false"
     privileged: true
     dns:
-      - 1.1.1.1
-      - 1.0.0.1
-      - 2606:4700:4700::1111
-      - 2606:4700:4700::1001
+    - 1.1.1.1
+    - 1.0.0.1
+    - 2606:4700:4700::1111
+    - 2606:4700:4700::1001
     sysctls:
       net.ipv6.conf.all.disable_ipv6: 0
       net.ipv4.conf.all.src_valid_mark: 1
     volumes:
-      - warp-data:/data
+    - warp-data:/data
     networks:
-      - warp-net
+    - warp-net
     healthcheck:
-      # WireGuard interface must be up; DNS reachability is best-effort
-      # (google.com may fail on geo-blocked/DNS-restricted hosts without
-      # meaning the tunnel itself is broken, so we don't block startup on it)
-      test: ["CMD-SHELL", "wg show wgcf >/dev/null 2>&1"]
+      test:
+      - "CMD-SHELL"
+      - "wg show wgcf >/dev/null 2>&1"
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 40s
-
+    deploy:
+      resources:
+        limits:
+          memory: '53687091'
+          cpus: 0.1
+        reservations: {}
+    mem_limit: 53687091
+    memswap_limit: 53687091
+    cpus: 0.1
 networks:
   warp-net:
     driver: bridge
-
 volumes:
-  warp-data:
-  caddy-data:
+  warp-data: 
+  caddy-data: 
   caddy-config:
